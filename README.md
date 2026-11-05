@@ -1,120 +1,205 @@
-# Orto Merge Tool
+# Project 2 in 46W38
+This is the second programming project of 46W38, which will be graded. Passing this project is one of the three requirements for passing this course. The other two requirements are passing programming project 1 and 3.
 
-Script en Python que une las teselas de una ortofoto (por ejemplo ECW con
-su `.prj`) en un único GeoTIFF liviano, pensado para cargar rápido en
-Global Mapper.
+**Due date of Project 2: 2026-Nov-1, 11:59 PM**
 
-El archivo resultante es un Cloud Optimized GeoTIFF (COG) con:
 
-- **resolución reducida** según un factor configurable,
-- **compresión JPEG** con calidad configurable,
-- **bloques internos y pirámides**, para que Global Mapper lea solo la zona
-  y el nivel de detalle que se está mirando.
+# Turbie
 
-## Requisitos
+For this project, you will be building and simulating Turbie. Turbie is a simple, two-degree-of-freedom (2DOF) system based of the DTU 10 MW Reference Wind Turbine. She is equivalent to the forced 2DOF mass-spring-damper system shown below, which is defined by a mass matrix, stiffness matrix, and damping matrix.
 
-Global Mapper no incluye Python ni GDAL, así que se necesita instalar
-**OSGeo4W** (gratuito). No hace falta instalar QGIS.
+<img src="figures/turbie.png" alt="Turbie Diagram" width="300"/>
+<img src="figures/turbie_2DOF_mass_spring_damper.png" alt="Turbie 2DOF mass-spring-damper" width="500"/>
 
-1. Descarga el instalador de red `osgeo4w-setup.exe` desde
-   <https://trac.osgeo.org/osgeo4w/>.
-2. Elige **Advanced Install** y deja la carpeta por defecto `C:\OSGeo4W`.
-3. En la lista de paquetes busca y marca:
-   - `python3-gdal` (GDAL para Python)
-   - `gdal-ecw` (lectura de archivos ECW)
-4. Termina la instalación.
+## Mass, Stiffness and Damping Matrices
 
-> La instalación de GDAL por `pip` o por Conda normalmente **no** lee ECW,
-> porque es un formato propietario. Por eso se usa OSGeo4W.
+To derive Turbie’s mass, stiffness and damping matrices, we make a few assumptions about our dynamical system:
+* The turbine can only move in the fore-aft direction;
+* The 3 blade deflections in the fore-aft direction are syncronized, i.e., only collective flapwise deflections.
 
-Si OSGeo4W quedó en otra carpeta, edita la línea `OSGEO4W_ROOT` dentro de
-`ejecutar.bat`.
+With these assumptions, we have reduced Turbie to two degrees of freedom: the deflection of the blades in the fore-aft direction and the deflection of the nacelle in the fore-aft direction. The 2 DOFs of the system are therefore defined as:
+* the deflection of the blades from their undeflected position in the global coordinate system;
+* the deflection of the nacelle from its undeflected position in the global coordinate system.
 
-## Antes de ejecutar
+With these DOFs, Turbie is equivalent to a 2DOF mass-spring-damper system, as shown above, where Mass 1 represents the 3 blades and Mass 2 represents the combined effects of the nacelle, hub and tower.
 
-1. Si las teselas están en OneDrive, haz clic derecho en la carpeta y elige
-   **"Mantener siempre en este dispositivo"**. El script avisa si detecta
-   archivos que siguen solo en la nube.
-2. Guarda la salida **fuera de OneDrive** para que no se sincronice un
-   archivo de varios GB.
-3. Verifica que haya espacio libre suficiente. El script muestra una
-   estimación y pide confirmación antes de empezar.
+We can define the 2DOF mass-spring-damper system with the following system matrices:
 
-## Uso
+$$
+\mathbf{M} =
+\begin{bmatrix}
+m_1 & 0 \\
+0 & m_2
+\end{bmatrix}
+$$
 
-### Modo interactivo (recomendado)
+$$
+\mathbf{C} =
+\begin{bmatrix}
+c_1 & -c_1 \\
+-c_1 & c_1 + c_2
+\end{bmatrix}
+$$
 
-Haz **doble clic en `ejecutar.bat`**. El script pregunta, en orden:
+$$
+\mathbf{K} =
+\begin{bmatrix}
+k_1 & -k_1 \\
+-k_1 & k_1 + k_2
+\end{bmatrix}
+$$
 
-1. Carpeta de las teselas (puedes pegar la ruta con "Copiar como ruta").
-2. Tipo de archivo a unir (`*.ecw` por defecto).
-3. Archivo de salida (si no pones `.tif`, se agrega solo).
-4. Nivel de reducción: `alto`, `medio`, `bajo` o `personalizado`.
-   En `personalizado` se pide el tamaño de píxel o el factor, y la
-   calidad JPEG.
-5. Valor sin datos en los bordes (Enter si no hay).
-6. Si quieres configurar opciones avanzadas (remuestreo, bloque,
-   pirámides y caché).
+Here is a table of relevant parameter values for Turbie. These values are held in the **turbie_parameters.txt** file
 
-Luego revisa las teselas, muestra el tamaño de píxel resultante y el peso
-estimado, y pregunta si quieres iniciar. Al terminar indica el peso final
-del archivo.
+| Symbol        | Description                                  | Value              |
+|---------------|--------------------------------------------- |--------------------|
+| $m_b$         | Mass of a single blade                       | 41 metric tons     |
+| $m_n$         | Mass of the nacelle                          | 446 metric tons    |
+| $m_t$        | Mass of the tower                            | 628 metric tons    |
+| $m_h$        | Mass of the hub                              | 105 metric tons    |
+| $c_1$        | Equivalent damping of the blades             | 4208 N/(m/s)       |
+| $c_2$        | Equivalent damping of the nacelle, hub, tower| 12730 N/(m/s)      |
+| $k_1$        | Equivalent stiffness of the blades           | 1711000 N/m        |
+| $k_2$        | Equivalent stiffness of the nacelle, hub, tower | 3278000 N/m     |
+| $D_{\text{rotor}}$ | Rotor diameter                         | 180 m              |
+| $\rho$       | Air density                                  | 1.22 kg/m $^3$     |
 
-### Modo por argumentos
+# Dynamical Equations
+A wind turbine is, as you might expect, forced by the wind. To accurately model aerodynamics, you should include extra time-dependent variables to include phenomena such as dynamic stall, tower shadow, variable turbine speed, etc. For simplicity, we make the following assumptions:
+* No dynamic inflow, dynamic stall, or tower shadow;
+* Turbie’s thrust coefficient is constant for a simulation and can be calculated from the mean wind speed;
+* The only aerodynamic forcing is on the blades;
+* No spatial variation of turbulence.
 
-También se puede ejecutar sin preguntas, útil para automatizar. Desde
-**OSGeo4W Shell**:
+With these assumptions, the aerodynamic forcing on the blades is given by:
 
-```bat
-python orto_merge_tool.py "D:\ortofoto\teselas" "D:\salida\ortofoto.tif"
-python orto_merge_tool.py teselas ortofoto.tif --nivel bajo
-python orto_merge_tool.py teselas ortofoto.tif --factor 3 --calidad 70
-python orto_merge_tool.py teselas ortofoto.tif --resolucion 0.25
-python orto_merge_tool.py teselas ortofoto.tif --nodata 0
-```
+$$
+f_{aero}(t) = \tfrac{1}{2} \rho C_T A \cdot \big(u(t) - \dot{x}_1\big) \cdot \big|u(t) - \dot{x}_1\big|,
+$$
 
-## Parámetros del modo por argumentos
+where $A$ is the rotor area and $u(t)$ is the wind speed at time $t$. The thrust coefficient $C_T$ is determined from the mean wind speed $U = u(t)$ using the look-up table defined in **C_T.txt**.
 
-| Parámetro | Por defecto | Descripción |
-|---|---|---|
-| `entrada` | (obligatorio) | Carpeta con las teselas |
-| `salida` | (obligatorio) | Ruta del GeoTIFF de salida (`.tif`) |
-| `--patron` | `*.ecw` | Archivos a unir dentro de la carpeta |
-| `--nivel` | `medio` | `alto`, `medio` o `bajo` (ver tabla siguiente) |
-| `--factor` | según nivel | Factor de reducción de resolución (1 = sin reducir) |
-| `--resolucion` | — | Tamaño de píxel final; reemplaza al factor |
-| `--calidad` | según nivel | Calidad JPEG de 1 a 100 |
-| `--remuestreo` | `average` | `average`, `bilinear`, `cubic`, `lanczos` o `nearest` |
-| `--bloque` | `512` | Tamaño de bloque interno: 256, 512 o 1024 |
-| `--sin-piramides` | — | No generar pirámides internas (no recomendado) |
-| `--nodata` | — | Valor de píxel sin datos, que quedará transparente |
-| `--cache-mb` | `1024` | Memoria de caché de GDAL en MB |
-| `--sobrescribir` | — | Reemplaza la salida si ya existe |
-| `--detalle` | — | Muestra mensajes de depuración |
 
-### Niveles predefinidos
+The full dynamical equations for Turbie are then given by
 
-| Nivel | Factor | Calidad JPEG | Píxeles respecto al original |
-|---|---|---|---|
-| `alto` | 2 | 85 | 1/4 |
-| `medio` | 4 | 75 | 1/16 |
-| `bajo` | 8 | 65 | 1/64 |
+$$
+\textbf{M} \ddot{\bar{x}}(t) + \textbf{C} \dot{\bar{x}}(t) + \textbf{K} \bar{x}(t) = \bar{F}(t),
+$$
 
-`--factor`, `--calidad` y `--resolucion` reemplazan los valores del nivel.
+where $\bar{x}(t) = [x_1(t), x_2(t)]^T$ is the state vector, and the forcing vector is given by
 
-## Qué hace el script
+$$
+\bar{F}(t) =
+\begin{bmatrix}
+f_{aero}(t) \\
+0
+\end{bmatrix}.
+$$
 
-1. Busca las teselas y revisa que tengan el mismo sistema de coordenadas
-   (desde cada `.prj`), el mismo número de bandas y 8 bits por banda.
-2. Construye un mosaico virtual en memoria, sin copiar píxeles.
-3. Escribe un único COG con la resolución reducida, compresión JPEG en
-   YCbCr, bloques internos y pirámides.
+# Simulating Turbie
+By simulating Turbie's response to wind loads, the derivatives of the blade and tower deflections and their velocities at each time step can be determined and captured in the vector $\bar{y}'(t)$. To solve for a time-marching response, you will need to use a numerical integrator that can solve dynamical systems of the form:
 
-## Desarrollo
+$$
+\bar{y}'(t) = f(t, \bar{y})
+$$
 
-El código sigue PEP 8. Para verificarlo:
+Let’s consider our dynamical system of the form
 
-```bash
-pip install -r requirements-dev.txt
-flake8 orto_merge_tool.py
-```
+$$
+\mathbf{M}\ddot{\bar{x}}(t) + \mathbf{C}\dot{\bar{x}}(t) + \mathbf{K}\bar{x}(t) = \bar{F}(t),
+$$
+
+and define a new vector $\bar{y}(t) = [\bar{x}(t), \dot{\bar{x}}(t)]^T$, called a state vector. This vector is 4 elements long for Turbie because it contains both the displacements and the velocities for the blades and tower. In this case, it can be shown that:
+
+$$
+{\bar{y}}'(t) =
+\begin{bmatrix}
+[0]_{N \times N} & [I]_{N \times N} \\
+-\mathbf{M}^{-1}\mathbf{K} & -\mathbf{M}^{-1}\mathbf{C}
+\end{bmatrix}
+\bar{y}(t) + 
+\begin{bmatrix}
+0 
+\\ 
+\mathbf{M}^{-1}\bar{F}(t)
+\end{bmatrix},
+$$
+
+where $N$ is the number of degrees of freedom. For Turbie, $N = 2$. We can simplify this expression as
+
+$$
+\bar{y}'(t) = \mathbf{A}\bar{y}(t) + \mathbf{B}(t)
+$$
+
+where $\mathbf{A}$ is the system matrix, encoding the mass, stiffness and damping, and $\mathbf{B}$ is the input matrix, capturing the forcing from the wind.
+
+If you have a function that calculates the derivative of your dynamical system, in this case $\bar{y}'(t)$, then you can use a numerical solver such as `scipy.integrate.solve_ivp` within Python to simulate the system.
+
+
+# The Programming Task
+Your task for this project is to build a Turbie module within Python housing the equations required to simulate the system. Then, you can import the module and its functions into another Python script. You will then apply the provided wind files to the model to determine how the blade and tower deflections vary with the wind speed and turbulence itensity (TI).
+
+The functions within the Turbie module should enable the:
+* Importing of the wind file data;
+* Determination of the $C_T$ for each **wind speed simulation** based on the **average wind speed**, via interpolation with the wind speed vs. $C_T$ look-up table found in C_T.txt;
+* Building of the Turbie system matrices ($\mathbf{M}$, $\mathbf{K}$ and $\mathbf{C}$) based on the values within the turbie_parameters.txt;
+* Calculation of $\bar{y}'(t)$.
+
+Within your second Python script, you should call upon these functions to solve Turbie for each wind speed case. You should pass $\bar{y}'(t)$ as one of the arguments to the `scipy.integrate.solve_ivp` function (along with initial conditions for $y$), which should then output the blade and tower displacements and velocities of Turbie at each time step.
+
+Your code should enable the simulation of Turbie at each wind speed case within each TI category, with results saved within a text file for each case. 
+
+- For one of the wind speed cases, plot the relative time-marching variation of wind and the blade and tower displacements.
+
+The means and standard deviations of the blade and tower displacements for each wind speed should then be calculated and saved within a separate text file for each TI category.
+
+- Plot the means and standard deviations of the blade and tower displacements for the wind speeds of each TI category.
+
+- Discuss and explain how the means and standard deviations of the blade and tower displacements change with the wind speed and with the TI. 
+
+**Hint:** To get the mean and standard deviation of the displacements for a given wind speed of a specific TI category, 
+you need to first compute the time series of displacements using the
+wins peed time series (like 6 m/s with 0.1 TI as stored in 
+"wind_6_ms_TI_0.1.txt"), then compute the mean and standard deviation
+based on the displacement time series.
+
+**Note**: The turbine parameters and the wind data are provided in the
+[turbie_inputs](turbie_inputs/) and [wind_files](wind_files/) folders. 
+You can download these files and put it the corresponding folders in 
+your project repository. These files should then be used in your main
+script.  
+
+
+# How to hand-in
+
+Create a repository named Project02_46W38 on GitHub. The owner should be you. Note also the following:
+
+* Add a proper description.
+* Choose visibility: Public or Private. (You may choose to make it only public after you hand-in or public since the beginning.)
+* Start with a template: No template.
+* Add .gitignore: Python
+* Add license: choose a license you want (like MIT license).
+* Add README: This should also include the **discussion and explanation** of your results.
+* Inside this repository, there should be:
+    1. Two python scripts, one named "turbie_mod.py" (for the Turbie module) and the other named "main.py" (for the main script). 
+    2. An "inputs" folder housing the inputs, with subfolders for the wind and Turbie input files. 
+    3. An "outputs" folder housing the results, with subfolders for the different wind TI categories.
+
+Write code incrementally and using Git to do version control.
+
+When you are satisfied with your code, please send us a link of your repository before the hand-in deadline.
+
+
+# Evaluation
+Evaluation of the project will be solely based on the repository, with focus on:
+
+* Functionality: does it implement the model correctly and fulfill the requirements listed in **The Programming Task** section.
+* Figure presentation: are the figures clear, consitent and well presented according to good plotting practices.
+* Code quality: does the code have proper efficiency, naming, docstring, comments and layout.
+* Professional workflow: does the repository looks professional and has it use version control properly (like meaningful commits).
+* Demonstration of understanding: have the results been discussed and explained.
+
+
+
+# Extension (if needed)
+If you need an extension, you should apply at least 5 days before the deadline, this needs to be done by email, i.e., write to Ju Feng (jufen@dtu.dk).
