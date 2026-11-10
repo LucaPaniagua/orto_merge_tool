@@ -20,7 +20,9 @@ echo Usando OSGeo4W en: %OSGEO4W_ROOT%
 call "%OSGEO4W_ROOT%\bin\o4w_env.bat"
 
 rem En instalaciones fuera de C:\OSGeo4W, GDAL no encuentra solo sus
-rem complementos (entre ellos el de ECW). Se le indica la carpeta.
+rem complementos (entre ellos el de ECW) ni sus archivos de datos.
+rem Se le indican ambas carpetas.
 if not defined GDAL_DRIVER_PATH if exist "%OSGEO4W_ROOT%\apps\gdal\lib\gdalplugins" set "GDAL_DRIVER_PATH=%OSGEO4W_ROOT%\apps\gdal\lib\gdalplugins"
+if not defined GDAL_DATA if exist "%OSGEO4W_ROOT%\apps\gdal\share\gdal" set "GDAL_DATA=%OSGEO4W_ROOT%\apps\gdal\share\gdal"
 
 python "%~dp0orto_merge_tool.py" %*
